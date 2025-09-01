@@ -18,8 +18,7 @@ delta_path   = "data/delta"          # where monthly delta CSVs live (e.g., Feb,
 final_path   = "data/final"          # where we write/read final snapshots
 report_path  = "data/report"         # where we write the aggregated report
 logger_path  = "logger/logger.log"   # log file location under logger/
-
-state_path   = os.path.join(final_path, "_state.json")  # small JSON registry of processed deltas
+state_path   = "state/_state.json"   # small JSON registry of processed deltas
 
 # Ensure the directory for the log file exists (no-op if already present)
 os.makedirs(os.path.dirname(logger_path), exist_ok=True)  # exist_ok=True → do not error if it exists
