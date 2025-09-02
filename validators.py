@@ -13,17 +13,23 @@ import numpy as np
 
 # ---------- Flexible loaders: CSV | Parquet | JSON ----------
 
-SUPPORTED_EXTS = {".csv", ".parquet", ".json"}
+SUPPORTED_EXTS = {".csv", ".parquet", ".json"}  # whitelist of extensions we know how to read
 
 def _read_with_ext(path_with_ext: str) -> pd.DataFrame:
-    ext = os.path.splitext(path_with_ext)[1].lower()
+    """
+    Read a file based on its extension.
+    - .csv      → pandas.read_csv
+    - .parquet  → pandas.read_parquet
+    - .json     → pandas.read_json (records format)
+    """
+    ext = os.path.splitext(path_with_ext)[1].lower()  # grab extension like ".csv"
     if ext == ".csv":
         return pd.read_csv(path_with_ext)
     elif ext == ".parquet":
-        # Requires pyarrow or fastparquet
+        # Requires either pyarrow or fastparquet installed in the environment
         return pd.read_parquet(path_with_ext)
     elif ext == ".json":
-        # Pipeline writes records (list of objects). This also handles records.
+        # Pipeline writes JSON as a list of record objects
         return pd.read_json(path_with_ext, orient="records")
     else:
         raise ValueError(f"Unsupported extension: {ext}")
@@ -31,13 +37,16 @@ def _read_with_ext(path_with_ext: str) -> pd.DataFrame:
 def load_any(base_or_full: str) -> pd.DataFrame:
     """
     Load a DataFrame from CSV/Parquet/JSON.
-    - If `base_or_full` has an extension and exists -> read it.
-    - Else try <base>.csv -> <base>.parquet -> <base>.json (first that exists).
+    - If a full filename with extension is given and exists → read it.
+    - Else, try <base>.csv → <base>.parquet → <base>.json (first one that exists).
     """
     base, ext = os.path.splitext(base_or_full)
+
+    # Case 1: user gave a file with extension explicitly
     if ext and ext.lower() in SUPPORTED_EXTS and os.path.exists(base_or_full):
         return _read_with_ext(base_or_full)
 
+    # Case 2: try the known suffixes in order of preference
     candidates = [base_or_full + ".csv", base_or_full + ".parquet", base_or_full + ".json"]
     last_err: Optional[Exception] = None
     for p in candidates:
@@ -45,20 +54,25 @@ def load_any(base_or_full: str) -> pd.DataFrame:
             try:
                 return _read_with_ext(p)
             except Exception as e:
+                # Save the last error so we can report it later
                 last_err = e
     if last_err:
+        # Found a file but it failed to read
         raise RuntimeError(f"Found a candidate report/table but failed to read it: {last_err}")
+    # Nothing found at all
     raise FileNotFoundError(f"Missing file: tried {', '.join(candidates)}")
 
 # ---------- Expected schemas ----------
 
+# Minimum columns each final table must contain
 REQUIRED_COLS: Dict[str, List[str]] = {
-    "agents_final": ["agent_id"],  # agent_name optional
+    "agents_final": ["agent_id"],  # agent_name is optional
     "contact_centers_final": ["contact_center_id", "contact_center_name"],
     "service_categories_final": ["category_id", "department"],  # category_name optional
     "interactions_final": ["interaction_id", "agent_id", "contact_center_id", "category_id"],
 }
 
+# Expected report columns
 REPORT_COLS: List[str] = [
     "month", "contact_center_name", "department",
     "total_interactions", "total_calls", "total_call_duration",
@@ -67,19 +81,31 @@ REPORT_COLS: List[str] = [
 # ---------- Generic checks ----------
 
 def check_required_columns(df: pd.DataFrame, required: List[str]) -> List[str]:
+    """
+    Verify required columns exist in the DataFrame.
+    Return a list of error messages if any are missing.
+    """
     missing = [c for c in required if c not in df.columns]
     return [f"Missing required column(s): {missing}"] if missing else []
 
 def check_unique(df: pd.DataFrame, cols: List[str], label: str) -> List[str]:
+    """
+    Ensure the given set of columns uniquely identify rows.
+    Returns error messages if duplicates are found.
+    """
     if not all(c in df.columns for c in cols):
         return [f"[{label}] cannot check uniqueness; missing cols: {[c for c in cols if c not in df.columns]}"]
-    dup = df.duplicated(subset=cols, keep=False)
+    dup = df.duplicated(subset=cols, keep=False)  # mark duplicates
     if dup.any():
         bad = df.loc[dup, cols].drop_duplicates().to_dict(orient="records")
         return [f"[{label}] duplicates present on {cols}: {bad}"]
     return []
 
 def check_unknown_member_present(df: pd.DataFrame, id_col: str, label: str) -> List[str]:
+    """
+    Validate that the dimension table contains a special UNKNOWN row
+    (used for repairing bad/missing foreign keys).
+    """
     if id_col not in df.columns:
         return [f"[{label}] missing id column: {id_col}"]
     if "UNKNOWN" not in set(df[id_col].astype(str)):
@@ -87,35 +113,46 @@ def check_unknown_member_present(df: pd.DataFrame, id_col: str, label: str) -> L
     return []
 
 def check_fk_integrity(facts: pd.DataFrame, dim: pd.DataFrame, fk_col: str, dim_id: str) -> List[str]:
+    """
+    Verify that foreign key values in the fact table exist in the dimension.
+    - Allows UNKNOWN as a fallback.
+    - Reports invalid values (not found in the dimension).
+    """
     msgs: List[str] = []
     if fk_col not in facts.columns:
         return [f"facts missing FK column: {fk_col}"]
     if dim_id not in dim.columns:
         return [f"dimension missing ID column: {dim_id}"]
+
     fk_vals = facts[fk_col].astype(str)
     valid = set(dim[dim_id].astype(str))
     missing_mask = ~fk_vals.isin(valid)
-    # Allow UNKNOWN; treat any other invalid as an error
+
     if missing_mask.any():
         offenders = facts.loc[missing_mask, fk_col].astype(str)
-        non_unknown = offenders[offenders != "UNKNOWN"]
+        non_unknown = offenders[offenders != "UNKNOWN"]  # exclude the allowed UNKNOWN
         if len(non_unknown) > 0:
             sample = non_unknown.head(10).tolist()
-            msgs.append(f"Invalid FK values in {fk_col} (not in dimension {dim_id}). Example: {sample} "
-                        f"(total invalid excluding UNKNOWN: {len(non_unknown)})")
+            msgs.append(
+                f"Invalid FK values in {fk_col} (not in dimension {dim_id}). Example: {sample} "
+                f"(total invalid excluding UNKNOWN: {len(non_unknown)})"
+            )
     return msgs
 
 # ---------- Report-specific checks ----------
 
-_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")  # YYYY-MM
+# Regex for YYYY-MM (month format)
+_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
 def check_month_format(report: pd.DataFrame) -> List[str]:
+    """Ensure the month column exists and follows YYYY-MM format."""
     if "month" not in report.columns:
         return ["report missing 'month'"]
     bad = report.loc[~report["month"].astype(str).str.match(_MONTH_RE), "month"]
     return [f"Invalid month format (expect YYYY-MM): {bad.unique().tolist()}"] if len(bad) else []
 
 def check_non_negative(report: pd.DataFrame) -> List[str]:
+    """Check numeric metrics are non-negative."""
     msgs: List[str] = []
     for c in ["total_interactions", "total_calls", "total_call_duration"]:
         if c not in report.columns:
@@ -126,6 +163,7 @@ def check_non_negative(report: pd.DataFrame) -> List[str]:
     return msgs
 
 def check_calls_not_exceed_interactions(report: pd.DataFrame) -> List[str]:
+    """Validate logical rule: calls ≤ interactions."""
     if not all(c in report.columns for c in ["total_calls", "total_interactions"]):
         return ["cannot check calls<=interactions; missing cols"]
     bad = report[report["total_calls"] > report["total_interactions"]]
@@ -133,17 +171,15 @@ def check_calls_not_exceed_interactions(report: pd.DataFrame) -> List[str]:
 
 def check_report_internal_consistency(report: pd.DataFrame) -> List[str]:
     """
-    Sanity: interactions should be integer counts; calls likewise.
+    Extra sanity: interactions and calls should be whole numbers, not NaN or floats.
     """
     msgs: List[str] = []
     for c in ["total_interactions", "total_calls"]:
         if c not in report.columns:
             msgs.append(f"report missing column: {c}")
             continue
-        # allow NaN -> treat as error
         if report[c].isna().any():
             msgs.append(f"{c} contains NaN")
-        # values should be whole numbers
         non_int = report[c].dropna() % 1 != 0
         if non_int.any():
             msgs.append(f"{c} has non-integer values")
@@ -154,7 +190,7 @@ def check_report_internal_consistency(report: pd.DataFrame) -> List[str]:
 def run_core_validations() -> Tuple[bool, List[str]]:
     """
     Loads final tables & support_report (csv/parquet/json) and runs checks.
-    Returns (ok, messages). ok==True if no errors found.
+    Returns (ok, messages). ok == True if no errors found.
     """
     messages: List[str] = []
 
@@ -184,7 +220,7 @@ def run_core_validations() -> Tuple[bool, List[str]]:
         messages.append(f"[support_report] failed to load: {e}")
         report = None
 
-    # If any critical table missing, return early with errors
+    # If any critical table/report is missing, return early
     required_loaded = set(table_bases.keys())
     if set(finals.keys()) != required_loaded or report is None:
         return False, messages
@@ -194,18 +230,18 @@ def run_core_validations() -> Tuple[bool, List[str]]:
         messages += [f"[{name}] {m}" for m in check_required_columns(finals[name], req)]
     messages += [f"[support_report] {m}" for m in check_required_columns(report, REPORT_COLS)]
 
-    # --- 2) Uniqueness on natural keys / IDs ---
+    # --- 2) Uniqueness of IDs ---
     messages += [f"[agents_final] {m}" for m in check_unique(finals["agents_final"], ["agent_id"], "agent_id")]
     messages += [f"[contact_centers_final] {m}" for m in check_unique(finals["contact_centers_final"], ["contact_center_id"], "contact_center_id")]
     messages += [f"[service_categories_final] {m}" for m in check_unique(finals["service_categories_final"], ["category_id"], "category_id")]
     messages += [f"[interactions_final] {m}" for m in check_unique(finals["interactions_final"], ["interaction_id"], "interaction_id")]
 
-    # --- 3) UNKNOWN members present in dims ---
+    # --- 3) UNKNOWN members present in dimensions ---
     messages += [f"[agents_final] {m}" for m in check_unknown_member_present(finals["agents_final"], "agent_id", "agents_final")]
     messages += [f"[contact_centers_final] {m}" for m in check_unknown_member_present(finals["contact_centers_final"], "contact_center_id", "contact_centers_final")]
     messages += [f"[service_categories_final] {m}" for m in check_unknown_member_present(finals["service_categories_final"], "category_id", "service_categories_final")]
 
-    # --- 4) FK integrity (facts -> dims), allowing UNKNOWN ---
+    # --- 4) FK integrity: facts → dims (allow UNKNOWN) ---
     messages += [f"[facts->agents] {m}" for m in check_fk_integrity(finals["interactions_final"], finals["agents_final"], "agent_id", "agent_id")]
     messages += [f"[facts->centers] {m}" for m in check_fk_integrity(finals["interactions_final"], finals["contact_centers_final"], "contact_center_id", "contact_center_id")]
     messages += [f"[facts->categories] {m}" for m in check_fk_integrity(finals["interactions_final"], finals["service_categories_final"], "category_id", "category_id")]
@@ -216,5 +252,6 @@ def run_core_validations() -> Tuple[bool, List[str]]:
     messages += [f"[support_report] {m}" for m in check_calls_not_exceed_interactions(report)]
     messages += [f"[support_report] {m}" for m in check_report_internal_consistency(report)]
 
+    # Overall status: pass if no messages
     ok = len(messages) == 0
     return ok, messages
