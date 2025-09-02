@@ -33,7 +33,7 @@ To run tests can either run : ```py -3.12 -m pytest -q  ``` or ```python3 valida
                   Richmond VA E                   7
 
 
-               q1 = df[df["month"].isin(["2025-01","2025-02","2025-03"])].copy()
+       q1 = df[df["month"].isin(["2025-01","2025-02","2025-03"])].copy()
        total_by_center = (
            q1.groupby("contact_center_name")["total_interactions"]
            .sum()
