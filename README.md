@@ -1,16 +1,10 @@
 Used Python 3.12
 Here are the libraries used:
 
-import os                   
-import sys                
-import glob                
-import json                
-import logging             
-from typing import List, Optional, Dict 
-
-import numpy as np         
-import pandas as pd        
+numpy         
+pandas     
 pytest
+pyarrow
 
 
 
