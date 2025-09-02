@@ -74,17 +74,19 @@ def main():
     print(f"\nHighest = {top_month['month']} with {top_month['total_interactions']} interactions\n")
 
     # Q3) Contact center with longest average phone call duration
-    avg_duration = (
+    total_duration = (
         q1.groupby("contact_center_name")
-        .agg(total_calls=("total_calls","sum"),
-             total_call_duration=("total_call_duration","sum"))
+        .agg(
+            total_calls=("total_calls", "sum"),
+            total_call_duration=("total_call_duration", "sum")
+        )
         .reset_index()
     )
-    avg_duration["avg_call_duration"] = avg_duration.apply(
+    total_duration["avg_call_duration"] = total_duration.apply(
         lambda r: (r["total_call_duration"] / r["total_calls"]) if r["total_calls"] > 0 else 0,
         axis=1
     )
-    avg_duration_sorted = avg_duration.sort_values("avg_call_duration", ascending=False)
+    avg_duration_sorted = total_duration.sort_values("avg_call_duration", ascending=False)
     print("3) Contact center with longest average phone call duration:")
     print(avg_duration_sorted.to_string(index=False))
     top_center = avg_duration_sorted.iloc[0]
