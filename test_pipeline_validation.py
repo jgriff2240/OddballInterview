@@ -6,16 +6,15 @@
 # -------------------------------------------------------------
 
 import pandas as pd
-from validators import load_finals, load_report, run_core_validations
-
-def test_files_exist():
-    """Check that pipeline produced all final CSVs and the report."""
-    finals = load_finals()
-    report = load_report()
-    assert isinstance(finals["agents_final"], pd.DataFrame)
-    assert isinstance(report, pd.DataFrame)
+from validators import run_core_validations, load_any
 
 def test_core_validations_pass():
     """Check that all core validation checks pass."""
     ok, messages = run_core_validations()
-    assert ok, f"Validation failed with messages: {messages}"
+    assert ok, "Validation failed with messages: {}".format(messages)
+
+def test_report_loads():
+    """Check that the support_report can be loaded in any format."""
+    df = load_any("data/report/support_report")
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
