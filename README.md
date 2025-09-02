@@ -10,6 +10,7 @@ from typing import List, Optional, Dict
 
 import numpy as np         
 import pandas as pd        
+pytest
 
 
 
@@ -22,6 +23,7 @@ to get the answers for the challenge.
 
 To reset the existing files and start from initial files you can add ```--reset```
 So to use all options and run incrementally you can run ```python3 pipeline.py --months=202502 --format=json --reset``` then ```python3 pipeline.py --months=202503 --format=json```
+To run unit/integration test file: ```py -3.12 -m pytest -q  ```
 
 1) What were the total number of interactions handled by each contact center in Q1 2025?
    
