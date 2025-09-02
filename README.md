@@ -23,7 +23,7 @@ to get the answers for the challenge.
 
 To reset the existing files and start from initial files you can add ```--reset```
 So to use all options and run incrementally you can run ```python3 pipeline.py --months=202502 --format=json --reset``` then ```python3 pipeline.py --months=202503 --format=json```
-To run unit/integration test file: ```py -3.12 -m pytest -q  ```
+To run tests can either run : ```py -3.12 -m pytest -q  ``` or ```python3 validate.py```
 
 1) What were the total number of interactions handled by each contact center in Q1 2025?
    
@@ -33,7 +33,7 @@ To run unit/integration test file: ```py -3.12 -m pytest -q  ```
                   Richmond VA E                   7
 
 
-               q1 = df[df["month"].isin(["2025-01","2025-02","2025-03"])].copy()
+       q1 = df[df["month"].isin(["2025-01","2025-02","2025-03"])].copy()
        total_by_center = (
            q1.groupby("contact_center_name")["total_interactions"]
            .sum()
