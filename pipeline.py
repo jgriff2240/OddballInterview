@@ -53,7 +53,7 @@ def _normalize_cols(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [c.strip() for c in df.columns]    # list comprehension: apply .strip() to each column name
     return df
 
-def coerce_utc_to_est(series_utc: pd.Series) -> pd.Series:
+def convert_utc_to_est(series_utc: pd.Series) -> pd.Series:
     """
     Convert UTC timestamps to EST (fixed UTC-5).
     If parsing or tz handling fails, manually shift by -5 hours.
@@ -80,7 +80,7 @@ def convert_all_timestamps(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     # Set intersection: keep only timestamp columns that actually exist in df
     for col in TIMESTAMP_COLS.intersection(df.columns):  # iterate each timestamp column present
-        df[col] = coerce_utc_to_est(df[col])             # per-column conversion
+        df[col] = convert_utc_to_est(df[col])             # per-column conversion
     return df
 
 def read_csv_required(path: str) -> pd.DataFrame:
