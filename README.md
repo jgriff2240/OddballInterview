@@ -20,6 +20,9 @@ Then run ```python3 pipeline.py```
 After the pipeline is run you can run ```python3 business_questions.py```   
 to get the answers for the challenge.
 
+To reset the existing files and start from initial files you can add ```--reset```
+So to use all options and run incrementally you can run ```python3 pipeline.py --months=202502 --format=json --reset``` then ```python3 pipeline.py --months=202503 --format=json```
+
 1) What were the total number of interactions handled by each contact center in Q1 2025?
    
                 contact_center_name  total_interactions
