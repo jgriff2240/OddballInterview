@@ -71,8 +71,8 @@ python3 validate.py
 ```text
 contact_center_name   total_interactions
 Boston MA NE                       13
-Atlanta GA SE                        8
-Richmond VA E                        7
+Atlanta GA SE                       8
+Richmond VA E                       7
 ```
 
 **Code snippet**:
